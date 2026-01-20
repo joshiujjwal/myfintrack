@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 4%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 6%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 6%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 38 100% 50%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 64%;
+    --accent: 0 0% 15%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 38 100% 50%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-mono;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+}
+
+/* Bloomberg Terminal Style Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+/* Terminal cursor blink */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+}
+
+/* Grid layout for dashboard */
+.react-grid-item.react-grid-placeholder {
+  background: rgba(255, 149, 0, 0.2);
+  border: 1px dashed rgba(255, 149, 0, 0.5);
+  border-radius: 0.5rem;
+}
+
+.react-grid-item > .react-resizable-handle::after {
+  border-color: #444;
+}
+
+/* Number formatting */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Positive/Negative colors */
+.positive {
+  @apply text-bloomberg-green;
+}
+
+.negative {
+  @apply text-bloomberg-red;
+}
+
+/* Bloomberg-style data cells */
+.data-cell {
+  @apply font-mono text-sm tabular-nums;
+}
+
+/* Terminal header bar */
+.terminal-header {
+  @apply bg-terminal-surface border-b border-terminal-border px-4 py-2;
+}
+
+/* Widget styling */
+.widget {
+  @apply bg-terminal-surface border border-terminal-border rounded-lg overflow-hidden;
+}
+
+.widget-header {
+  @apply flex items-center justify-between px-4 py-2 border-b border-terminal-border;
+}
+
+.widget-title {
+  @apply text-bloomberg-amber font-semibold text-sm uppercase tracking-wide;
+}
+
+.widget-content {
+  @apply p-4;
+}
+
+/* Keyboard shortcut hint */
+.kbd {
+  @apply inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-mono bg-terminal-muted border border-terminal-border rounded;
+}
+
+/* Chart axis styles */
+.recharts-cartesian-axis-tick-value {
+  @apply fill-muted-foreground text-xs;
+}
+
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: #1a1a1a;
+}

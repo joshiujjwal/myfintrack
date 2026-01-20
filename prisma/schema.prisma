@@ -1,0 +1,560 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// USER & AUTHENTICATION
+// ============================================================================
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  passwordHash      String    @map("password_hash")
+  firstName         String    @map("first_name")
+  lastName          String    @map("last_name")
+  dateOfBirth       DateTime? @map("date_of_birth")
+  retirementAge     Int?      @default(65) @map("retirement_age")
+  riskTolerance     RiskTolerance? @default(moderate) @map("risk_tolerance")
+  annualIncome      Decimal?  @map("annual_income") @db.Decimal(15, 2)
+  isEmailVerified   Boolean   @default(false) @map("is_email_verified")
+  lastLoginAt       DateTime? @map("last_login_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  settings          UserSettings?
+  accounts          Account[]
+  plaidItems        PlaidItem[]
+  transactions      Transaction[]
+  categories        Category[]
+  goals             Goal[]
+  debts             Debt[]
+  budgets           Budget[]
+  netWorthSnapshots NetWorthSnapshot[]
+  projections       Projection[]
+  scenarios         Scenario[]
+  alerts            Alert[]
+  recurringRules    RecurringRule[]
+  refreshTokens     RefreshToken[]
+
+  @@map("users")
+}
+
+enum RiskTolerance {
+  conservative
+  moderate
+  aggressive
+}
+
+model UserSettings {
+  id                  String    @id @default(uuid())
+  userId              String    @unique @map("user_id")
+  currency            String    @default("USD")
+  locale              String    @default("en-US")
+  dashboardLayout     Json?     @map("dashboard_layout")
+  theme               String    @default("dark")
+  emailNotifications  Boolean   @default(true) @map("email_notifications")
+  pushNotifications   Boolean   @default(true) @map("push_notifications")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+// ============================================================================
+// ACCOUNTS & PLAID INTEGRATION
+// ============================================================================
+
+model PlaidItem {
+  id               String          @id @default(uuid())
+  userId           String          @map("user_id")
+  accessToken      String          @map("access_token") // Encrypted
+  itemId           String          @unique @map("item_id")
+  institutionId    String?         @map("institution_id")
+  institutionName  String?         @map("institution_name")
+  consentExpiresAt DateTime?       @map("consent_expires_at")
+  cursor           String?         // For transaction sync
+  lastSyncedAt     DateTime?       @map("last_synced_at")
+  syncStatus       PlaidSyncStatus @default(pending) @map("sync_status")
+  errorCode        String?         @map("error_code")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts Account[]
+
+  @@map("plaid_items")
+}
+
+enum PlaidSyncStatus {
+  active
+  pending
+  error
+  disconnected
+}
+
+model Account {
+  id               String      @id @default(uuid())
+  userId           String      @map("user_id")
+  plaidItemId      String?     @map("plaid_item_id")
+  plaidAccountId   String?     @unique @map("plaid_account_id")
+  name             String
+  officialName     String?     @map("official_name")
+  type             AccountType
+  subtype          String?
+  mask             String?     // Last 4 digits
+  institutionName  String?     @map("institution_name")
+  institutionId    String?     @map("institution_id")
+  currentBalance   Decimal     @default(0) @map("current_balance") @db.Decimal(15, 2)
+  availableBalance Decimal?    @map("available_balance") @db.Decimal(15, 2)
+  creditLimit      Decimal?    @map("credit_limit") @db.Decimal(15, 2)
+  currency         String      @default("USD")
+  isManual         Boolean     @default(false) @map("is_manual")
+  isHidden         Boolean     @default(false) @map("is_hidden")
+  lastSyncedAt     DateTime?   @map("last_synced_at")
+  createdAt        DateTime    @default(now()) @map("created_at")
+  updatedAt        DateTime    @updatedAt @map("updated_at")
+
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plaidItem      PlaidItem?       @relation(fields: [plaidItemId], references: [id], onDelete: SetNull)
+  transactions   Transaction[]
+  balanceHistory BalanceHistory[]
+  debt           Debt?
+
+  @@map("accounts")
+}
+
+enum AccountType {
+  checking
+  savings
+  credit
+  loan
+  investment
+  mortgage
+  other
+}
+
+model BalanceHistory {
+  id        String   @id @default(uuid())
+  accountId String   @map("account_id")
+  balance   Decimal  @db.Decimal(15, 2)
+  date      DateTime @db.Date
+  createdAt DateTime @default(now()) @map("created_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, date])
+  @@index([accountId, date])
+  @@map("balance_history")
+}
+
+model NetWorthSnapshot {
+  id               String   @id @default(uuid())
+  userId           String   @map("user_id")
+  date             DateTime @db.Date
+  totalAssets      Decimal  @map("total_assets") @db.Decimal(15, 2)
+  totalLiabilities Decimal  @map("total_liabilities") @db.Decimal(15, 2)
+  netWorth         Decimal  @map("net_worth") @db.Decimal(15, 2)
+  breakdown        Json     // NetWorthBreakdown
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId, date])
+  @@map("net_worth_snapshots")
+}
+
+// ============================================================================
+// TRANSACTIONS & CATEGORIES
+// ============================================================================
+
+model Transaction {
+  id                     String          @id @default(uuid())
+  userId                 String          @map("user_id")
+  accountId              String          @map("account_id")
+  plaidTransactionId     String?         @unique @map("plaid_transaction_id")
+  amount                 Decimal         @db.Decimal(15, 2) // Positive = expense, Negative = income
+  date                   DateTime        @db.Date
+  name                   String
+  merchantName           String?         @map("merchant_name")
+  categoryId             String?         @map("category_id")
+  pending                Boolean         @default(false)
+  type                   TransactionType @default(debit)
+  paymentChannel         String?         @map("payment_channel")
+  location               Json?           // TransactionLocation
+  tags                   String[]        @default([])
+  notes                  String?
+  isRecurring            Boolean         @default(false) @map("is_recurring")
+  recurringRuleId        String?         @map("recurring_rule_id")
+  isExcludedFromBudget   Boolean         @default(false) @map("is_excluded_from_budget")
+  isExcludedFromReports  Boolean         @default(false) @map("is_excluded_from_reports")
+  createdAt              DateTime        @default(now()) @map("created_at")
+  updatedAt              DateTime        @updatedAt @map("updated_at")
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account       Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  category      Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  recurringRule RecurringRule? @relation(fields: [recurringRuleId], references: [id], onDelete: SetNull)
+
+  @@index([userId, date])
+  @@index([accountId, date])
+  @@index([categoryId])
+  @@map("transactions")
+}
+
+enum TransactionType {
+  debit
+  credit
+  transfer
+}
+
+model Category {
+  id        String       @id @default(uuid())
+  userId    String?      @map("user_id") // Null for system categories
+  name      String
+  parentId  String?      @map("parent_id")
+  icon      String?
+  color     String?
+  type      CategoryType
+  isSystem  Boolean      @default(false) @map("is_system")
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent       Category?     @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children     Category[]    @relation("CategoryHierarchy")
+  transactions Transaction[]
+  budgetItems  BudgetItem[]
+
+  @@unique([userId, name, parentId])
+  @@map("categories")
+}
+
+enum CategoryType {
+  income
+  expense
+  transfer
+}
+
+model RecurringRule {
+  id              String             @id @default(uuid())
+  userId          String             @map("user_id")
+  name            String
+  merchantPattern String?            @map("merchant_pattern")
+  categoryId      String?            @map("category_id")
+  averageAmount   Decimal            @map("average_amount") @db.Decimal(15, 2)
+  frequency       RecurringFrequency
+  lastOccurrence  DateTime?          @map("last_occurrence")
+  nextExpected    DateTime?          @map("next_expected")
+  isActive        Boolean            @default(true) @map("is_active")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@map("recurring_rules")
+}
+
+enum RecurringFrequency {
+  weekly
+  biweekly
+  monthly
+  quarterly
+  annually
+}
+
+// ============================================================================
+// GOALS & MILESTONES
+// ============================================================================
+
+model Goal {
+  id                  String     @id @default(uuid())
+  userId              String     @map("user_id")
+  name                String
+  description         String?
+  type                GoalType
+  targetAmount        Decimal    @map("target_amount") @db.Decimal(15, 2)
+  currentAmount       Decimal    @default(0) @map("current_amount") @db.Decimal(15, 2)
+  startDate           DateTime   @map("start_date") @db.Date
+  targetDate          DateTime   @map("target_date") @db.Date
+  priority            Int        @default(1)
+  status              GoalStatus @default(on_track)
+  linkedAccountIds    String[]   @map("linked_account_ids")
+  monthlyContribution Decimal?   @map("monthly_contribution") @db.Decimal(15, 2)
+  expectedReturn      Decimal?   @map("expected_return") @db.Decimal(5, 4) // 0.0700 = 7%
+  inflationRate       Decimal?   @map("inflation_rate") @db.Decimal(5, 4)
+  icon                String?
+  color               String?
+  settings            Json?      // GoalSettings
+  createdAt           DateTime   @default(now()) @map("created_at")
+  updatedAt           DateTime   @updatedAt @map("updated_at")
+
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  milestones    GoalMilestone[]
+  contributions GoalContribution[]
+
+  @@index([userId, status])
+  @@map("goals")
+}
+
+enum GoalType {
+  emergency_fund
+  debt_free
+  retirement
+  home_purchase
+  education
+  vacation
+  major_purchase
+  investment
+  custom
+}
+
+enum GoalStatus {
+  on_track
+  at_risk
+  behind
+  completed
+  paused
+}
+
+model GoalMilestone {
+  id           String    @id @default(uuid())
+  goalId       String    @map("goal_id")
+  name         String
+  targetAmount Decimal   @map("target_amount") @db.Decimal(15, 2)
+  targetDate   DateTime? @map("target_date") @db.Date
+  isCompleted  Boolean   @default(false) @map("is_completed")
+  completedAt  DateTime? @map("completed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  goal Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@map("goal_milestones")
+}
+
+model GoalContribution {
+  id        String   @id @default(uuid())
+  goalId    String   @map("goal_id")
+  amount    Decimal  @db.Decimal(15, 2)
+  date      DateTime @db.Date
+  source    String?
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  goal Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([goalId, date])
+  @@map("goal_contributions")
+}
+
+// ============================================================================
+// DEBT MANAGEMENT
+// ============================================================================
+
+model Debt {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  linkedAccountId String?   @unique @map("linked_account_id")
+  name            String
+  type            DebtType
+  originalAmount  Decimal   @map("original_amount") @db.Decimal(15, 2)
+  currentBalance  Decimal   @map("current_balance") @db.Decimal(15, 2)
+  interestRate    Decimal   @map("interest_rate") @db.Decimal(5, 4) // 0.1850 = 18.5%
+  minimumPayment  Decimal   @map("minimum_payment") @db.Decimal(15, 2)
+  dueDay          Int       @map("due_day") // Day of month (1-31)
+  startDate       DateTime  @map("start_date") @db.Date
+  payoffDate      DateTime? @map("payoff_date") @db.Date
+  lender          String?
+  isActive        Boolean   @default(true) @map("is_active")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  linkedAccount Account?      @relation(fields: [linkedAccountId], references: [id], onDelete: SetNull)
+  payments      DebtPayment[]
+
+  @@index([userId, isActive])
+  @@map("debts")
+}
+
+enum DebtType {
+  credit_card
+  student_loan
+  auto_loan
+  mortgage
+  personal_loan
+  medical
+  other
+}
+
+model DebtPayment {
+  id           String   @id @default(uuid())
+  debtId       String   @map("debt_id")
+  amount       Decimal  @db.Decimal(15, 2)
+  principalPaid Decimal @map("principal_paid") @db.Decimal(15, 2)
+  interestPaid Decimal  @map("interest_paid") @db.Decimal(15, 2)
+  date         DateTime @db.Date
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  debt Debt @relation(fields: [debtId], references: [id], onDelete: Cascade)
+
+  @@index([debtId, date])
+  @@map("debt_payments")
+}
+
+// ============================================================================
+// BUDGETS
+// ============================================================================
+
+model Budget {
+  id            String       @id @default(uuid())
+  userId        String       @map("user_id")
+  name          String
+  startDate     DateTime     @map("start_date") @db.Date
+  endDate       DateTime     @map("end_date") @db.Date
+  period        BudgetPeriod
+  totalBudgeted Decimal      @map("total_budgeted") @db.Decimal(15, 2)
+  isActive      Boolean      @default(true) @map("is_active")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  user  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items BudgetItem[]
+
+  @@index([userId, isActive])
+  @@map("budgets")
+}
+
+enum BudgetPeriod {
+  weekly
+  biweekly
+  monthly
+  quarterly
+  yearly
+}
+
+model BudgetItem {
+  id             String   @id @default(uuid())
+  budgetId       String   @map("budget_id")
+  categoryId     String   @map("category_id")
+  budgetedAmount Decimal  @map("budgeted_amount") @db.Decimal(15, 2)
+  spentAmount    Decimal  @default(0) @map("spent_amount") @db.Decimal(15, 2)
+  rollover       Boolean  @default(false)
+  rolloverAmount Decimal  @default(0) @map("rollover_amount") @db.Decimal(15, 2)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  budget   Budget   @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([budgetId, categoryId])
+  @@map("budget_items")
+}
+
+// ============================================================================
+// PROJECTIONS & SCENARIOS
+// ============================================================================
+
+model Projection {
+  id         String         @id @default(uuid())
+  userId     String         @map("user_id")
+  type       ProjectionType
+  name       String
+  parameters Json           // ProjectionParameters
+  result     Json           // ProjectionResult
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@map("projections")
+}
+
+enum ProjectionType {
+  compound_interest
+  retirement
+  debt_payoff
+  goal_progress
+  net_worth
+  monte_carlo
+}
+
+model Scenario {
+  id          String  @id @default(uuid())
+  userId      String  @map("user_id")
+  name        String
+  description String?
+  baselineType String @map("baseline_type") // 'current' | 'goal' | 'custom'
+  adjustments Json    // ScenarioAdjustment[]
+  result      Json?   // ScenarioResult
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("scenarios")
+}
+
+// ============================================================================
+// ALERTS & NOTIFICATIONS
+// ============================================================================
+
+model Alert {
+  id        String        @id @default(uuid())
+  userId    String        @map("user_id")
+  type      AlertType
+  title     String
+  message   String
+  severity  AlertSeverity
+  isRead    Boolean       @default(false) @map("is_read")
+  actionUrl String?       @map("action_url")
+  metadata  Json?
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+  @@map("alerts")
+}
+
+enum AlertType {
+  budget_exceeded
+  goal_milestone
+  goal_at_risk
+  large_transaction
+  recurring_detected
+  low_balance
+  sync_error
+  bill_due
+}
+
+enum AlertSeverity {
+  info
+  warning
+  error
+  success
+}

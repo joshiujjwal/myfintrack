@@ -83,10 +83,10 @@ export interface GoalProjection {
   requiredMonthlyContribution: number;
   percentComplete: number;
   daysRemaining: number;
-  projectionData: ProjectionDataPoint[];
+  projectionData: GoalProjectionDataPoint[];
 }
 
-export interface ProjectionDataPoint {
+export interface GoalProjectionDataPoint {
   date: Date;
   projected: number;
   actual?: number;

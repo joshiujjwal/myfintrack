@@ -4,7 +4,7 @@ import { CreateGoalDto } from './dto/create-goal.dto';
 import { UpdateGoalDto } from './dto/update-goal.dto';
 import { CalculationsService } from '../calculations/calculations.service';
 import { Decimal } from '@prisma/client/runtime/library';
-import { GoalStatus } from '@prisma/client';
+import { GoalStatus, Prisma } from '@prisma/client';
 
 @Injectable()
 export class GoalsService {
@@ -63,7 +63,7 @@ export class GoalsService {
         inflationRate: dto.inflationRate,
         icon: dto.icon,
         color: dto.color,
-        settings: dto.settings,
+        settings: dto.settings as Prisma.InputJsonValue,
       },
     });
 
@@ -79,9 +79,13 @@ export class GoalsService {
       throw new NotFoundException('Goal not found');
     }
 
+    const { settings, ...rest } = dto;
     const updated = await this.prisma.goal.update({
       where: { id },
-      data: dto,
+      data: {
+        ...rest,
+        ...(settings !== undefined && { settings: settings as Prisma.InputJsonValue }),
+      },
       include: {
         milestones: { orderBy: { targetAmount: 'asc' } },
         contributions: { orderBy: { date: 'desc' }, take: 5 },

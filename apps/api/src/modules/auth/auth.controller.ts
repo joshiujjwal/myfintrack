@@ -43,7 +43,7 @@ export class AuthController {
     @GetUser('sub') userId: string,
     @Body() dto: RefreshTokenDto,
   ) {
-    return this.authService.refreshTokens(userId, dto.refreshToken);
+    return this.authService.refreshTokens(userId, dto.refreshToken!);
   }
 
   @Post('logout')

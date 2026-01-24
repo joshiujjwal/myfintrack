@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 
@@ -78,12 +79,17 @@ export class UsersService {
   }
 
   async updateSettings(userId: string, dto: UpdateSettingsDto) {
+    const { dashboardLayout, ...rest } = dto;
+    const data = {
+      ...rest,
+      ...(dashboardLayout !== undefined && { dashboardLayout: dashboardLayout as Prisma.InputJsonValue }),
+    };
     return this.prisma.userSettings.upsert({
       where: { userId },
-      update: dto,
+      update: data,
       create: {
         userId,
-        ...dto,
+        ...data,
       },
     });
   }
